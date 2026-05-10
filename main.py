@@ -238,7 +238,7 @@ def main():
     new_shows = detect_new(old_state, new_state)
     save_state(new_state)
 
-    if True:
+    if new_shows:
         print(f"\n  ⚡ {len(new_shows)} new show(s) detected!")
         for s in new_shows:
             print(f"    → {s['text']}")
