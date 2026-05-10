@@ -1,7 +1,7 @@
 """
 District.in Show Notifier
-Runs via GitHub Actions every 30 minutes.
-Detects new shows at a theatre and sends email via Resend.
+Runs via GitHub Actions every 10 minutes.
+Detects new shows at a theatre and sends email via Resend + Telegram.
 """
 
 import os
@@ -13,12 +13,14 @@ from datetime import datetime
 # ──────────────────────────────────────────────────────────────────────
 # CONFIG — set via GitHub Actions environment variables
 # ──────────────────────────────────────────────────────────────────────
-DISTRICT_URL    = os.getenv("DISTRICT_URL", "")
-CHECK_DATES     = os.getenv("CHECK_DATES", "")        # e.g. "2026-05-14,2026-05-15"
-RESEND_API_KEY  = os.getenv("RESEND_API_KEY", "")
-RESEND_TO       = os.getenv("RESEND_TO", "")
-RESEND_FROM     = os.getenv("RESEND_FROM", "alerts@resend.dev")
-STATE_FILE      = "district_state.json"
+DISTRICT_URL        = os.getenv("DISTRICT_URL", "")
+CHECK_DATES         = os.getenv("CHECK_DATES", "")
+RESEND_API_KEY      = os.getenv("RESEND_API_KEY", "")
+RESEND_TO           = os.getenv("RESEND_TO", "")
+RESEND_FROM         = os.getenv("RESEND_FROM", "alerts@resend.dev")
+TELEGRAM_BOT_TOKEN  = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID    = os.getenv("TELEGRAM_CHAT_ID", "")
+STATE_FILE          = "district_state.json"
 
 # ──────────────────────────────────────────────────────────────────────
 # FETCH PAGE using Playwright (real browser — bypasses bot detection)
@@ -193,6 +195,50 @@ def send_email(new_shows: list[dict], all_shows: list[dict], url: str):
 
 
 # ──────────────────────────────────────────────────────────────────────
+# TELEGRAM NOTIFICATION
+# ──────────────────────────────────────────────────────────────────────
+def send_telegram(new_shows: list[dict], all_shows: list[dict], url: str):
+    import requests
+
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("  ⚠️  TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set — skipping Telegram")
+        return
+
+    count = len(new_shows)
+    now = datetime.now().strftime("%d %b %Y, %I:%M %p")
+
+    new_lines = "\n".join(f"  🆕 {s['text'][:80]}" for s in new_shows)
+    all_lines = "\n".join(f"  • {s['text'][:80]}" for s in all_shows)
+
+    message = (
+        f"🎬 *District.in Alert!*\n"
+        f"_{now}_\n\n"
+        f"*{count} new show{'s' if count > 1 else ''} added at Vettri Theatres!*\n\n"
+        f"*New:*\n{new_lines}\n\n"
+        f"*All shows:*\n{all_lines}\n\n"
+        f"👉 [Book now]({url})"
+    )
+
+    try:
+        resp = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": message,
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": False,
+            },
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            print(f"  ✅ Telegram sent → chat {TELEGRAM_CHAT_ID}")
+        else:
+            print(f"  ❌ Telegram error {resp.status_code}: {resp.text}")
+    except Exception as e:
+        print(f"  ❌ Telegram failed: {e}")
+
+
+# ──────────────────────────────────────────────────────────────────────
 # MAIN
 # ──────────────────────────────────────────────────────────────────────
 def main():
@@ -243,6 +289,7 @@ def main():
         for s in new_shows:
             print(f"    → {s['text']}")
         send_email(new_shows, all_shows, DISTRICT_URL)
+        send_telegram(new_shows, all_shows, DISTRICT_URL)
     else:
         print(f"\n  ✅ No new shows. Total tracked: {len(all_shows)}")
 
