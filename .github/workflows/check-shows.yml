@@ -1,0 +1,49 @@
+name: District.in Show Notifier
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check-shows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Restore state
+        uses: actions/cache@v4
+        with:
+          path: district_state.json
+          key: district-state-${{ github.run_id }}
+          restore-keys: |
+            district-state-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install playwright beautifulsoup4 requests
+          playwright install chromium --with-deps
+
+      - name: Check for new shows
+        env:
+          DISTRICT_URL:   ${{ vars.DISTRICT_URL }}
+          CHECK_DATES:    ${{ vars.CHECK_DATES }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_TO:      ${{ secrets.RESEND_TO }}
+          RESEND_FROM:    ${{ secrets.RESEND_FROM }}
+        run: python main.py
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: district_state.json
+          key: district-state-${{ github.run_id }}
